@@ -48,3 +48,12 @@ class EstatePropertyOffer(models.Model):
                 record.property_id.selling_price = 0.0
             record.state = 'refused'
         return True
+
+    @api.model
+    def create(self, vals):
+        estate_property = self.env['estate.property'].browse(vals['property_id'])
+        estate_property.state = 'offer received'
+        for record in self:
+            if record.price < estate_property.best_price:
+                raise ValidationError("New offer price must be higher than existing offers'")
+        return super().create(vals)
