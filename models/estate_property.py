@@ -1,14 +1,14 @@
 from odoo import api, models, fields
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools.float_utils import float_compare, float_is_zero
 from dateutil.relativedelta import relativedelta
 
 class EstateProperty(models.Model):
     _name = "estate.property"
-    _description = """
-    Estate Property Model
-    """
+    _description ="Estate Property Model"
+    _order = "id desc"
     
-    name = fields.Char(required=True)
+    name = fields.Char(required=True, string="Title")
     description = fields.Text()
     postcode = fields.Char()
     date_availability = fields.Date(string='Available Date', default=lambda self: fields.Date.today() + relativedelta(months=+3), copy=False)
@@ -19,29 +19,29 @@ class EstateProperty(models.Model):
     facades = fields.Integer()
     garage = fields.Boolean()
     garden = fields.Boolean()
+
+    @api.onchange('garden')
+    def _onchange_garden(self):
+        for record in self:
+            if record.garden == True:
+                record.garden_area = 10
+                record.garden_orientation = 'north'
+            else:
+                record.garden_area = 0
+                record.garden_orientation = ''
+
     garden_area = fields.Integer(string='Garden Area (sqm)')
     garden_orientation = fields.Selection(
         selection=[('north','North'),('west','West'),('south','South'),('east','East')]
     )
-
-    @api.onchange('garden')
-    def _onchange_garden(self):
-        if self.garden == True:
-            self.garden_area = 10
-            self.garden_orientation = 'north'
-        else:
-            self.garden_area = 0
-            self.garden_orientation = ''
-
     active = fields.Boolean(default=True)
     state = fields.Selection(
         required=True,
         copy=False,
         selection=[('new','New'),('offer received','Offer Received'),('offer accepted','Offer Accepted'),('sold','Sold'),('canceled','Canceled')],
-        default='new',
-        readonly=True
+        readonly=True,
+        default='new'
     )
-
     total_area = fields.Integer(compute='_compute_total_area')
 
     @api.depends('living_area', 'garden_area')
@@ -49,14 +49,13 @@ class EstateProperty(models.Model):
         for record in self:
             record.total_area = record.living_area + record.garden_area
 
-
-    property_type_id = fields.Many2one('estate.property.type', string='Property Type')
+    type_id = fields.Many2one('estate.property.type', string='Property Type')
     offer_ids = fields.One2many('estate.property.offer', 'property_id')
-    tag_ids = fields.Many2many('estate.property.tag')
 
+    tag_ids = fields.Many2many('estate.property.tag')
     best_price = fields.Integer(compute='_find_best_price', string="Best Offer")
 
-    @api.depends("offer_ids.price")
+    @api.depends("offer_ids")
     def _find_best_price(self):
         for record in self:
             if len(record.offer_ids) > 0:
@@ -83,3 +82,11 @@ class EstateProperty(models.Model):
                 record.state = 'canceled'
         return True
     
+    _sql_constraints = [('check_expected_price', 'CHECK(expected_price > 0)',"The expected price must be strictly postivive"),
+    ('check_selling_price','CHECK(selling_price >= 0)',"The selling price must be positive")]
+
+    @api.constrains('selling_price')
+    def _check_selling_price(self):
+        for record in self:
+            if float_is_zero(record.selling_price, precision_digits=2) == False and float_compare(record.selling_price, 0.9*record.expected_price, precision_digits=2) == -1:
+                raise ValidationError("The selling price must be at least 90% of the expected price")
