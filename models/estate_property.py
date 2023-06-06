@@ -16,7 +16,7 @@ class EstateProperty(models.Model):
     selling_price = fields.Float(copy=False, readonly=True)
     bedrooms = fields.Integer(default=2)
     living_area = fields.Integer(string='Living Area (sqm)')
-    facades = fields.Integer()
+    facades = fields.Integer(groups='estate.estate_group_manager')
     garage = fields.Boolean()
     garden = fields.Boolean()
 
